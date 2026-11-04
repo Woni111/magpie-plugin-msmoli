@@ -1,24 +1,25 @@
 {
-  "name": "magpie-plugin-msmoli",
-  "version": "0.2.0",
-  "description": "ModelScope (魔搭) 魔粒 daily check-in and balance for magpie, for modelscope.cn and modelscope.ai — one check-in a day instead of opening the site",
-  "author": "MisonL",
+  "name": "magpie-plugin-modelscope",
+  "version": "0.3.0",
+  "description": "ModelScope for magpie: China and international providers with chat, images, daily check-in and magicube usage",
+  "author": "MisonL; Woni111 fork",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MisonL/magpie-plugin-msmoli.git"
+    "url": "git+https://github.com/Woni111/magpie-plugin-msmoli.git"
   },
-  "homepage": "https://github.com/MisonL/magpie-plugin-msmoli",
+  "homepage": "https://github.com/Woni111/magpie-plugin-msmoli",
   "bugs": {
-    "url": "https://github.com/MisonL/magpie-plugin-msmoli/issues"
+    "url": "https://github.com/Woni111/magpie-plugin-msmoli/issues"
   },
   "main": "./index.mjs",
   "exports": "./index.mjs",
   "bin": {
-    "magpie-plugin-msmoli": "./bin/sync.mjs"
+    "magpie-plugin-modelscope": "./bin/sync.mjs"
   },
   "files": [
     "index.mjs",
+    "provider.mjs",
     "bin/sync.mjs",
     "README.md",
     "README.zh-CN.md",
@@ -29,6 +30,8 @@
     "magpie-plugin",
     "opencode-plugin",
     "modelscope",
+    "modelscope-intl",
+    "api-inference",
     "magicube",
     "checkin"
   ],
@@ -41,6 +44,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "check": "node --check index.mjs && node --check provider.mjs && node --test",
     "test:clock": "node --import ./tools/ticking-clock.mjs --test",
     "prepublishOnly": "node --test"
   }

@@ -241,10 +241,11 @@ put it there.
   profiles are reachable to tests through `testables`, an object the loader
   skips. Do not copy a hook for the second site: a fix landing in one copy and
   not the other is the failure this shape exists to prevent.
-- **A separate `msmoli` provider, with no models.** Chat keeps using the
-  `modelscope` preset with your API key. A plugin that served the provider
-  inference routes through would take the whole chat path out of magpie when
-  its usage window reads as used up.
+- **One provider per site, doing both jobs.** Each provider serves its model
+  catalog, chat and images as well as check-in and the usage card. A zero
+  balance means the vendor refuses inference anyway, so the same routing
+  identity is deliberate: magpie should be able to see an exhausted account
+  before it spends a request on it.
 - **`used` is not capped at 100.** magpie reads a value above 100 as overspent,
   which is what it is.
 - **A body we do not understand fails; it never becomes a zero.** No `data`, a

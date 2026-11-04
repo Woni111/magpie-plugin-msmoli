@@ -1,9 +1,9 @@
-// ModelScope (魔搭) 魔粒 check-in for magpie — one provider per site:
+// ModelScope (魔搭) provider for magpie — one provider per site:
 // modelscope.cn (`msmoli`) and modelscope.ai (`msmoli-intl`).
 //
 // magpie calls auth.checkin once a Beijing day per signed-in account while the
 // provider's check-in switch is on, and again later that day after a failure.
-// Hooks here: checkin, usage.
+// Hooks here: loader, checkin, usage, models and config.
 //
 // How the claim works: ModelScope's OpenAPI has no check-in endpoint. What it
 // has is a side effect — GET /api/v1/users/login/info counts as a website
@@ -13,13 +13,13 @@
 // daily_active rule, but separate accounts and separate tokens: measured, an
 // ms- token authenticates only on the site it came from.
 //
-// The plugin serves no chat models: inference keeps using the API-key modelscope
-// preset in providers.json. Both providers exist only to carry the sign-in the
-// check-in runs as.
+// Each provider carries its site's model catalog, chat and image requests as
+// well as the web sign-in used for the daily grant and the usage card.
 
 import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { isAbsolute, join } from "node:path"
+import { createProviderSupport } from "./provider.mjs"
 
 // A profile is everything that differs between the two deployments: the
 // origin, the provider id (magpie keys the sign-in, the card and the alias by
@@ -29,15 +29,17 @@ import { isAbsolute, join } from "node:path"
 // for them to drift.
 const CN = {
   site: "https://modelscope.cn",
+  api: "https://api-inference.modelscope.cn/v1",
   id: "msmoli",
-  name: "ModelScope 魔粒",
+  name: "ModelScope 中国版",
   plan: "魔搭社区",
   where: "国内站",
 }
 const INTL = {
   site: "https://modelscope.ai",
+  api: "https://api-inference.modelscope.ai/v1",
   id: "msmoli-intl",
-  name: "ModelScope 魔粒（国际版）",
+  name: "ModelScope 国际版",
   plan: "魔搭社区（国际版）",
   where: "国际站",
 }
@@ -1038,6 +1040,7 @@ async function pluginFor(profile, input) {
   // the host labels an account by its accountId, and an api-type sign-in has
   // none. Written once, at the first check-in, when the name is known.
   const client = input?.client
+  const models = createProviderSupport(profile)
 
   return {
     auth: {
@@ -1057,6 +1060,11 @@ async function pluginFor(profile, input) {
           placeholder: "ms-…",
         },
       ],
+
+      // The same token signs API-Inference requests with a Bearer header. The
+      // custom fetch also turns ModelScope's asynchronous image API into the
+      // OpenAI Images shape magpie's generic drawer reads.
+      loader: models.loader,
 
       // 签到：先看今天到账没有，再触达登录，最后回读对账。直接触达无法区分
       // 「本次领取」与「早就领过」，而账单能。
@@ -1396,8 +1404,15 @@ async function pluginFor(profile, input) {
       },
     },
 
-    // 让 provider 以名字出现，不注册任何模型：聊天仍走 providers.json 里
-    // API key 版的那个 modelscope 预设。
+    // The account's own /v1/models answer replaces the bootstrap snapshot just
+    // as the built-in ModelScope provider refreshes its list.
+    provider: {
+      id: profile.id,
+      models: models.models,
+    },
+
+    // One provider carries the model catalog, chat and images as well as the
+    // check-in and usage card above.
     async config(config) {
       // 宿主是 `{ provider: {}, ...userConfig }` 拼出来的，用户配置里那个
       // provider 会盖掉默认的 {}。它不是对象时（旧版本写的字符串、手改的
@@ -1413,6 +1428,12 @@ async function pluginFor(profile, input) {
       config.provider[profile.id] = {
         ...was,
         name: typeof was.name === "string" && was.name ? was.name : profile.name,
+        npm: "@ai-sdk/openai-compatible",
+        api: profile.api,
+        models: {
+          ...models.configModels(),
+          ...(was.models && typeof was.models === "object" ? was.models : {}),
+        },
       }
     },
   }

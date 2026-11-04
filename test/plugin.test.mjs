@@ -198,11 +198,13 @@ test("the plugin declares its provider and one api sign-in method", () => {
   assert.equal(auth.methods[0].authorize, undefined)
 })
 
-test("the config hook names the provider and registers no model", async () => {
+test("the config hook names the provider and registers its model catalog", async () => {
   const config = {}
   await hooks.config(config)
-  assert.equal(config.provider.msmoli.name, "ModelScope 魔粒")
-  assert.equal(config.provider.msmoli.models, undefined)
+  assert.equal(config.provider.msmoli.name, "ModelScope 中国版")
+  assert.equal(config.provider.msmoli.npm, "@ai-sdk/openai-compatible")
+  assert.equal(config.provider.msmoli.api, "https://api-inference.modelscope.cn/v1")
+  assert.ok(Object.keys(config.provider.msmoli.models).length > 30)
 })
 
 test("the config hook keeps a provider name the user set", async () => {
@@ -222,11 +224,12 @@ test("a provider entry that is not an object is no entry, and a name that is not
   // as index keys, and "" or 42 becomes the provider's only visible label.
   const past = { provider: { msmoli: "旧条目" } }
   await hooks.config(past)
-  assert.deepEqual(past.provider.msmoli, { name: "ModelScope 魔粒" }, "a string is not an entry to spread")
+  assert.equal(past.provider.msmoli.name, "ModelScope 中国版", "a string is not an entry to spread")
+  assert.ok(past.provider.msmoli.models["deepseek-ai/DeepSeek-V4.1-Flash-1017"])
   for (const name of ["", 42]) {
     const config = { provider: { msmoli: { name } } }
     await hooks.config(config)
-    assert.equal(config.provider.msmoli.name, "ModelScope 魔粒", `${JSON.stringify(name)} is not a name to keep`)
+    assert.equal(config.provider.msmoli.name, "ModelScope 中国版", `${JSON.stringify(name)} is not a name to keep`)
   }
 })
 
@@ -274,8 +277,9 @@ test("the config hook names both providers, each keeping its own user-set name",
   await hooks.config(config)
   await intlHooks.config(config)
   assert.equal(config.provider.msmoli.name, "我的魔搭", "the domestic rename is left alone")
-  assert.equal(config.provider["msmoli-intl"].name, "ModelScope 魔粒（国际版）")
-  assert.equal(config.provider["msmoli-intl"].models, undefined, "still no model registered")
+  assert.equal(config.provider["msmoli-intl"].name, "ModelScope 国际版")
+  assert.equal(config.provider["msmoli-intl"].api, "https://api-inference.modelscope.ai/v1")
+  assert.ok(Object.keys(config.provider["msmoli-intl"].models).length > 30)
   // and a rename of the international one survives the next start too
   config.provider["msmoli-intl"].name = "MS Intl"
   await intlHooks.config(config)
@@ -4950,7 +4954,8 @@ test("a config whose provider field is not an object gets a fresh one", async ()
   for (const junk of ["", 0, false, "旧条目"]) {
     const config = { provider: junk }
     await hooks.config(config)
-    assert.deepEqual(config.provider, { msmoli: { name: "ModelScope 魔粒" } }, `provider was ${JSON.stringify(junk)}`)
+    assert.equal(config.provider.msmoli.name, "ModelScope 中国版", `provider was ${JSON.stringify(junk)}`)
+    assert.ok(config.provider.msmoli.models["deepseek-ai/DeepSeek-V4.1-Flash-1017"])
   }
 })
 
