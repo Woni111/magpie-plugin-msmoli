@@ -26,9 +26,9 @@ Tokens are site-specific. A token from one site answers 401 on the other.
   `/tasks/<id>` API.
 - Daily check-in: `daily_active` 200 + `aliyun_bindlogin` 50 credits.
 - Account card with balance, today's grants, today's spend and expiry time.
-- A stable ModelScope account identity (email or account name) in the sign-in's
-  metadata, so Magpie sync recognizes the same token under different account
-  slots on two computers instead of creating a duplicate.
+- A stable ModelScope account id (the site's `Name`, not the shared nickname)
+  on the sign-in, so Magpie sync recognizes the same token under different
+  account slots on two computers instead of creating a duplicate.
 - The original check-in retry, account-name write-back and token handling from
   magpie-plugin-msmoli.
 

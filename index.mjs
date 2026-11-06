@@ -504,21 +504,20 @@ function rememberName(token, name) {
   while (names.size > NAMES_MAX) names.delete(names.keys().next().value)
 }
 
-// identities holds the account's stable identity as ModelScope itself names it
-// (its email, else its account name), by token. Magpie's sync keeps plugin
+// stableIds holds the account's stable id as ModelScope itself names it (its
+// Name, the account's unique login), by token. Magpie's sync keeps plugin
 // sign-ins by who they are: an api-type sign-in without an accountId is known
 // by its plugin-auth.json key alone, and two computers that put the same token
-// under different provider#slot keys then keep both. The identity is written to
-// metadata.email — a field Magpie's AuthWho already reads — while accountId
-// stays the label the user sees, so a sync can match the account without
-// renaming it or moving the alias kept under its label.
-const identities = new Map()
+// under different provider#slot keys then keep both. accountId is both that
+// identity and the label an alias is kept under, so a stable id makes sync
+// recognize the account without depending on which slot the host picked.
+const stableIds = new Map()
 
-function rememberIdentity(token, identity) {
-  if (!identity) return
-  identities.delete(token)
-  identities.set(token, identity)
-  while (identities.size > NAMES_MAX) identities.delete(identities.keys().next().value)
+function rememberStableId(token, id) {
+  if (!id) return
+  stableIds.delete(token)
+  stableIds.set(token, id)
+  while (stableIds.size > NAMES_MAX) stableIds.delete(stableIds.keys().next().value)
 }
 
 // named holds when this process last wrote a name back, by token, so a name is
@@ -878,7 +877,7 @@ const unusableName = (name, token) =>
   nameIsKey(name, token) ||
   ["__proto__", "constructor", "prototype"].includes(name)
 
-async function rememberAccountName(profile, client, token, name, auth, dir, identity = "") {
+async function rememberAccountName(profile, client, token, name, auth, dir, stableId = "") {
   // "can write" is a function, not a truthy value: `{ auth: { set: 1 } }` is a
   // client that cannot write, and `!client?.auth?.set` let it through to call
   // a number — the TypeError is caught below, but it logs "account name not
@@ -886,25 +885,21 @@ async function rememberAccountName(profile, client, token, name, auth, dir, iden
   // had a chance to succeed.
   if (typeof client?.auth?.set !== "function") return
   const current = auth && typeof auth === "object" ? auth : {}
-  const metadata =
-    current.metadata && typeof current.metadata === "object" && !Array.isArray(current.metadata)
-      ? current.metadata
-      : {}
-  // A stable identity goes into metadata.email, which Magpie's AuthWho reads
-  // when the sign-in has no accountId. It is what lets two computers' sync
-  // recognize one token under different provider#slot keys; the name below is
-  // still the label, and an alias under that label is still honoured.
-  const wantsIdentity = Boolean(identity) && metadata.email !== identity
+  // ModelScope's Name is the account's stable login (A15282890010,
+  // Woni_Rescene, …), while NickName is a display name two accounts can share.
+  // Magpie keys a plugin account by accountId, so the stable id is what keeps
+  // two computers' provider#slot choices from becoming two accounts. It is
+  // also the label an alias is kept under; the user's alias is still honoured.
+  const label = stableId || name
   // An account the user has named keeps that name: writing the nickname over
   // it would re-key their alias to a label the account no longer has. A
   // providers.json that can't be read says the same thing — don't write over
-  // a state we can't see. The identity is not a name, so it may still be
-  // written when the alias lookup is unknown or says the account is named.
+  // a state we can't see.
   const wantsName =
-    Boolean(name) &&
-    current.accountId !== name &&
+    Boolean(label) &&
+    current.accountId !== label &&
     aliasOf(profile.id, dir, labelOf(current, token)) === ""
-  if (!wantsIdentity && !wantsName) return
+  if (!wantsName) return
   const at = named.get(token)
   if (at !== undefined && Date.now() - at < NAME_AGAIN_MS) return
   named.delete(token)
@@ -914,8 +909,7 @@ async function rememberAccountName(profile, client, token, name, auth, dir, iden
     // auth.set replaces the whole sign-in, so what the host handed us is the
     // base: a field we do not know about is kept, not dropped
     const body = { ...current, type: "api", key: token }
-    if (wantsIdentity) body.metadata = { ...metadata, email: identity }
-    if (wantsName) body.accountId = name
+    body.accountId = label
     await client.auth.set({ path: { id: profile.id }, body })
   } catch (e) {
     // the card keeps the key's tail; nothing else depends on this. Put the
@@ -1159,7 +1153,7 @@ async function pluginFor(profile, input) {
         // wait came out of this hook's 25s — a claim that had landed was then
         // answered "预算已用完" and shown as failed for half an hour.
         let name = ""
-        let identity = ""
+        let stableId = ""
         const answer = await (async () => {
         try {
           const before = await todayEarn(profile, token, deadline)
@@ -1204,7 +1198,7 @@ async function pluginFor(profile, input) {
           const known = names.get(token) ?? ""
           if (claimed && known) {
             name = known
-            identity = identities.get(token) ?? ""
+            stableId = stableIds.get(token) ?? ""
           } else {
             const { res, body, parsed } = await json(profile.site, token, LOGIN_INFO, deadline)
             // 403 是风控，不是令牌坏了：账号可能是好的，只是这次请求被拒
@@ -1219,10 +1213,10 @@ async function pluginFor(profile, input) {
             const str = (v) => (typeof v === "string" && v.trim() ? v : "")
             const candidate = text(str(me.NickName) || str(me.Name), 40)
             name = unusableName(candidate, token) ? "" : candidate
-            const stable = text(str(me.Email) || str(me.Name), 120)
-            identity = stable && !unusableName(stable, token) ? stable : ""
+            const stable = text(str(me.Name), 120)
+            stableId = stable && !unusableName(stable, token) ? stable : ""
             rememberName(token, name)
-            rememberIdentity(token, identity)
+            rememberStableId(token, stableId)
           }
 
           // done 用触发**之前**那一页的合计：今天已经领过，领到的就是那时
@@ -1288,7 +1282,7 @@ async function pluginFor(profile, input) {
         // catches its own failures, and anything it could still throw (an
         // unreadable providers.json read) must not undo the answer above
         try {
-          await rememberAccountName(profile, client, token, name, auth, configDir, identity)
+          await rememberAccountName(profile, client, token, name, auth, configDir, stableId)
         } catch {}
         return answer
       },
@@ -1319,7 +1313,7 @@ async function pluginFor(profile, input) {
             names.get(token) ?? "",
             auth,
             configDir,
-            identities.get(token) ?? "",
+            stableIds.get(token) ?? "",
           )
           const bal = await json(profile.site, token, BALANCE, deadline)
           gate(profile, bal.res, bal.body, bal.parsed, token, "余额查询失败")

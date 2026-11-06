@@ -1,6 +1,6 @@
 {
   "name": "magpie-plugin-modelscope",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "ModelScope for magpie: China and international providers with chat, images, daily check-in and magicube usage",
   "author": "MisonL; Woni111 fork",
   "type": "module",

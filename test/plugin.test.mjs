@@ -1272,7 +1272,7 @@ test("the name read at check-in is written back so the card can show it", async 
     await withFetch(
       {
         "/api/v1/users/login/info": {
-          body: { Code: 200, Success: true, Data: { NickName: "Mison", Email: "mison@example.com" } },
+          body: { Code: 200, Success: true, Data: { NickName: "Mison", Name: "A123456789" } },
         },
         "/openapi/v1/magicubes/transactions?page=1&page_size=50": { body: { success: true, data: { records: [] } } },
       },
@@ -1281,7 +1281,7 @@ test("the name read at check-in is written back so the card can show it", async 
         await withClient.auth.checkin(async () => ({ type: "api", key: token, metadata: { kept: "yes" } }))
         assert.equal(writes.length, 1, "the name is written back once")
         const body = writes[0].body
-        assert.equal(body.accountId, "Mison")
+        assert.equal(body.accountId, "A123456789", "the stable account name is the accountId")
         assert.equal(body.key, token)
         // auth.set replaces the whole sign-in, so the kind has to be restated
         // here: dropped or mis-typed, the account comes back as a sign-in of a
@@ -1289,7 +1289,6 @@ test("the name read at check-in is written back so the card can show it", async 
         assert.equal(body.type, "api", "the write-back is still an api sign-in")
         assert.equal(JSON.stringify(body).split(token).length - 1, 1, "the token appears once, not twice")
         assert.equal(body.metadata?.kept, "yes", "fields the host already had are kept")
-        assert.equal(body.metadata?.email, "mison@example.com", "the stable identity is written for sync")
 
         // a second ask does not write again, and one already named is left alone
         await withClient.auth.checkin(async () => ({ type: "api", key: token, accountId: "Mison" }))
@@ -1378,11 +1377,10 @@ test("an account the user already named is not renamed under them", async () => 
   }
 })
 
-test("an aliased account still gets a stable sync identity, without being renamed", async () => {
-  // The alias is kept under the label (here the key's tail). A sync identity
-  // is not a label: writing metadata.email lets magpie recognize the same
-  // token under another provider#slot on the other computer, while accountId
-  // stays absent so the alias still matches.
+test("an aliased account keeps its label even when ModelScope names a stable id", async () => {
+  // The alias is kept under the label (here the key's tail). Writing the
+  // stable Name over it would re-key the alias, so the account is left as the
+  // user named it. A label moved to the stable Name gets it written normally.
   const dir = tmpDir("msmoli-aliasid-")
   writeFileSync(join(dir, "msmoli.json"), JSON.stringify({ checkinWindow: false }))
   const token = "ms-nametest-0000-0000-0000-000000000012"
@@ -1399,15 +1397,48 @@ test("an aliased account still gets a stable sync identity, without being rename
     await withFetch(
       {
         "/api/v1/users/login/info": {
-          body: { Code: 200, Success: true, Data: { NickName: "Mison", Email: "mison@example.com" } },
+          body: { Code: 200, Success: true, Data: { NickName: "Mison", Name: "A123456789" } },
         },
         "/openapi/v1/magicubes/transactions?page=1&page_size=50": { body: { success: true, data: { records: [] } } },
       },
       async () => {
         await withClient.auth.checkin(async () => ({ type: "api", key: token }))
-        assert.equal(writes.length, 1, "the identity is written once")
-        assert.equal(writes[0].body.accountId, undefined, "the alias keeps its label: no accountId is written")
-        assert.equal(writes[0].body.metadata?.email, "mison@example.com", "the sync identity is written")
+        assert.equal(writes.length, 0, "the alias keeps its label: no accountId is written over it")
+      },
+    )
+  } finally {
+    if (saved === undefined) delete process.env.MAGPIE_MSMOLI_CONFIG
+    else process.env.MAGPIE_MSMOLI_CONFIG = saved
+  }
+})
+
+test("an alias kept under the stable id lets the stable id be written", async () => {
+  // The one-time move from an old key-tail label to ModelScope's stable Name:
+  // the alias is already kept under the Name, so writing it does not lose the
+  // user's name and the account becomes the same one on every computer.
+  const dir = tmpDir("msmoli-stableid-")
+  writeFileSync(join(dir, "msmoli.json"), JSON.stringify({ checkinWindow: false }))
+  const token = "ms-nametest-0000-0000-0000-000000000013"
+  writeFileSync(
+    join(dir, "providers.json"),
+    JSON.stringify({ providers: [{ id: "msmoli", accountNames: { a123456789: "主号" } }] }),
+  )
+  const saved = process.env.MAGPIE_MSMOLI_CONFIG
+  delete process.env.MAGPIE_MSMOLI_CONFIG
+  try {
+    const writes = []
+    const withClient = await MsmoliPlugin({ directory: dir, client: { auth: { set: async (o) => { writes.push(o) } } } })
+    await withFetch(
+      {
+        "/api/v1/users/login/info": {
+          body: { Code: 200, Success: true, Data: { NickName: "Mison", Name: "A123456789" } },
+        },
+        "/openapi/v1/magicubes/transactions?page=1&page_size=50": { body: { success: true, data: { records: [] } } },
+      },
+      async () => {
+        await withClient.auth.checkin(async () => ({ type: "api", key: token }))
+        assert.equal(writes.length, 1, "the stable id is written once")
+        assert.equal(writes[0].body.accountId, "A123456789")
       },
     )
   } finally {
